@@ -1,10 +1,10 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
 import '../providers/wallet_provider.dart';
+import '../services/api_config.dart';
 
 class CoinPackage {
   final int coins;
@@ -49,9 +49,7 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
 
     try {
       final dio = Dio(BaseOptions(
-        baseUrl: kIsWeb
-            ? 'http://localhost:5000'
-            : (Platform.isAndroid ? 'http://10.0.2.2:5000' : 'http://localhost:5000'),
+        baseUrl: apiBaseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
       ));

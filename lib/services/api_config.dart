@@ -1,9 +1,5 @@
-import 'dart:io' show Platform;
+// Production API base URL — Railway deployment
+// All services import this single getter; never hardcode URLs elsewhere.
+const String _productionUrl = 'https://backend-api-production-140f.up.railway.app';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
-
-String get apiBaseUrl {
-  if (kIsWeb) return 'http://localhost:5000';
-  if (Platform.isAndroid) return 'http://10.0.2.2:5000';
-  return 'http://localhost:5000';
-}
+String get apiBaseUrl => _productionUrl;
