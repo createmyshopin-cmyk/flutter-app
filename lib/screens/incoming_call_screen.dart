@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/call_service.dart';
+import '../utils/api_error_message.dart';
 import 'calling_screen.dart';
 
 class IncomingCallScreen extends StatefulWidget {
@@ -105,8 +106,9 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
       setState(() => _isAccepting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not accept call: ${e.toString()}'),
+          content: Text(callAcceptErrorMessage(e)),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
     }

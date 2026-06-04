@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:dio/dio.dart';
+import '../providers/auth_provider.dart';
 import '../providers/wallet_provider.dart';
-import '../services/api_config.dart';
+import '../services/api_client.dart';
 
 class CoinPackage {
   final int coins;
@@ -48,12 +48,14 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
     });
 
     try {
-      final dio = Dio(BaseOptions(
-        baseUrl: apiBaseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-      ));
-
+      final token = context.read<AuthProvider>().accessToken;
+      if (token == null) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+      final dio = createApiDio(accessToken: token);
       final response = await dio.get('/api/coin-packages');
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
@@ -64,8 +66,7 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
               final baseCoins = item['coins'] as int? ?? 100;
               final bonusCoins = item['bonusCoins'] as int? ?? 0;
               final totalCoins = baseCoins + bonusCoins;
-              final priceCents = item['price'] as int? ?? 99;
-              final priceVal = priceCents / 100.0;
+              final priceVal = (item['price'] as num? ?? 99).toDouble();
               final name = item['name'] as String? ?? 'Coin Package';
 
               IconData icon;
