@@ -1,0 +1,40 @@
+# Flutter/Dart build files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+lib/generated_plugin_registrant.dart
+
+# Android specific ignores
+.gradle/
+local.properties
+*.apk
+*.aab
+*.ap_
+*.keystore
+*.jks
+
+# iOS specific ignores (if applicable in future)
+*.mode1v3
+*.mode2v3
+*.owner
+*.moved-aside
+*.pbxuser
+*.perspectivev3
+DerivedData/
+IPHONEOS_DEPLOYMENT_TARGET
+Pods/
+.symlinks/
+profile
+
+# Secret / config credentials (users should populate their own)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
