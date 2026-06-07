@@ -23,6 +23,16 @@ class AppUser {
   final String? avatarUrl;
   final String? language;
   final bool onboardingCompleted;
+  final String role;
+  final String creatorStatus;
+  final bool isCreator;
+
+  /// Profile display name — always prefers [fullName] over legacy [name].
+  String get displayName {
+    final full = fullName?.trim();
+    if (full != null && full.isNotEmpty) return full;
+    return name.trim();
+  }
 
   AppUser({
     required this.uid,
@@ -38,15 +48,20 @@ class AppUser {
     this.avatarUrl,
     this.language,
     this.onboardingCompleted = false,
+    this.role = 'user',
+    this.creatorStatus = 'none',
+    this.isCreator = false,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
-    final fullName = json['fullName'] as String? ??
-        json['full_name'] as String? ??
-        json['name'] as String?;
+    final fullName = json['fullName'] as String? ?? json['full_name'] as String?;
+    final legacyName = json['name'] as String? ?? '';
+    final resolvedName = (fullName?.trim().isNotEmpty == true)
+        ? fullName!.trim()
+        : legacyName.trim();
     return AppUser(
       uid: json['id'] as String,
-      name: fullName ?? json['name'] as String? ?? '',
+      name: resolvedName,
       phone: json['phone'] as String? ?? '',
       email: json['email'] as String? ?? '',
       coins: json['coins'] as int? ?? 0,
@@ -62,6 +77,9 @@ class AppUser {
           json['onboardingCompleted'] as bool? ??
           json['onboarding_completed'] as bool? ??
           false,
+      role: json['role'] as String? ?? 'user',
+      creatorStatus: json['creatorStatus'] as String? ?? json['creator_status'] as String? ?? 'none',
+      isCreator: json['isCreator'] as bool? ?? json['is_creator'] as bool? ?? false,
     );
   }
 }
@@ -75,6 +93,8 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isInitializing = true;
   String? _lastError;
+  String? _creatorStatus;
+  Map<String, dynamic>? _listenerProfile;
 
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final Dio _dio = Dio(BaseOptions(
@@ -101,6 +121,115 @@ class AuthProvider with ChangeNotifier {
   AppUser? get user => _user;
   String? get accessToken => _accessToken;
   String? get pendingPhoneE164 => _pendingPhoneE164;
+
+  String get creatorStatus => _creatorStatus ?? _user?.creatorStatus ?? 'none';
+
+  /// Approved/active creator — unlocks listener mode and earnings UI.
+  bool get isActiveCreator {
+    if (creatorStatus == 'suspended') return false;
+    if (creatorStatus == 'active' || creatorStatus == 'approved') return true;
+    if (_user?.isCreator == true) return true;
+    return _user?.role == 'creator';
+  }
+
+  bool get isListener => isActiveCreator;
+  Map<String, dynamic>? get listenerProfile => _listenerProfile;
+
+  Future<void> applyForListener({
+    required String name,
+    required String bio,
+    required List<String> languages,
+    required String profileImage,
+  }) async {
+    if (_accessToken == null) {
+      throw Exception('Not authenticated');
+    }
+    _setLoading(true);
+    _lastError = null;
+    try {
+      final response = await _dio.post(
+        '/api/creators',
+        data: {
+          'name': name,
+          'bio': bio,
+          'languages': languages,
+          'profileImage': profileImage,
+        },
+        options: Options(
+          headers: {'Authorization': 'Bearer $_accessToken'},
+        ),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _creatorStatus = 'pending';
+        final data = response.data as Map<String, dynamic>;
+        _listenerProfile = data['creator'] as Map<String, dynamic>?;
+        notifyListeners();
+      } else {
+        throw Exception('Failed to submit listener application');
+      }
+    } on DioException catch (e) {
+      _lastError = e.response?.data?.toString() ?? e.message;
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> fetchListenerProfile() async {
+    final uid = _user?.uid;
+    if (_accessToken == null || uid == null) {
+      return;
+    }
+    try {
+      final response = await _dio.get(
+        '/api/creators/$uid',
+        options: Options(
+          headers: {'Authorization': 'Bearer $_accessToken'},
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        _listenerProfile = response.data as Map<String, dynamic>;
+        final statusVal = _listenerProfile?['status'] as String?;
+        if (statusVal != null && statusVal.isNotEmpty) {
+          _creatorStatus = statusVal;
+        } else if (_user?.isCreator == true) {
+          _creatorStatus = 'active';
+        } else {
+          _creatorStatus = 'none';
+        }
+      } else if (_user?.isCreator == true) {
+        _creatorStatus = 'active';
+      } else {
+        _creatorStatus = 'none';
+        _listenerProfile = null;
+      }
+      notifyListeners();
+    } catch (e) {
+      if (_user?.isCreator != true) {
+        _creatorStatus = 'none';
+        _listenerProfile = null;
+      } else {
+        _creatorStatus = 'active';
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshRole() async {
+    await loadProfile();
+    await fetchListenerProfile();
+  }
+
+  /// Reload profile from API (includes users.coins for legacy surfaces).
+  /// Does not drive wallet UI — WalletProvider ignores auth refresh for balance.
+  Future<void> refreshUser() async {
+    await loadProfile();
+    debugPrint(
+      '[AuthProvider] refreshUser => users.coins=${_user?.coins}',
+    );
+  }
 
   /// Restores Firebase session from disk, then re-exchanges for API JWT on cold start.
   Future<void> _restoreSession() async {
@@ -346,7 +475,15 @@ class AuthProvider with ChangeNotifier {
 
     if (response.statusCode == 200) {
       _user = AppUser.fromJson(response.data as Map<String, dynamic>);
+      if (_user?.isCreator == true &&
+          (_creatorStatus == null || _creatorStatus == 'none')) {
+        _creatorStatus = 'active';
+      }
+      debugPrint(
+        '[AuthProvider] loadProfile => users.coins=${_user?.coins}',
+      );
       notifyListeners();
+      await fetchListenerProfile();
     } else if (response.statusCode == 401) {
       _accessToken = null;
       await SessionStorage.clearAccessToken();
