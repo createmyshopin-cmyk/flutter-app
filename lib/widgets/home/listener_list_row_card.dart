@@ -6,7 +6,7 @@ import '../../constants/home_theme.dart';
 import '../../models/creator.dart';
 import '../../utils/home_responsive.dart';
 import 'creator_avatar_image.dart';
-import 'pulsing_online_dot.dart';
+import 'presence_status_badge.dart';
 import 'scale_pressed_button.dart';
 
 /// Compact full-width listener row — matches reference list sections.
@@ -82,12 +82,14 @@ class _ListenerListRowCardState extends State<ListenerListRowCard>
                           size: avatar,
                           borderRadius: BorderRadius.circular(HomeResponsive.w(context, 14)),
                         ),
-                        if (creator.isOnline)
-                          Positioned(
-                            top: HomeResponsive.w(context, 4),
-                            left: HomeResponsive.w(context, 4),
-                            child: _OnlinePill(compact: true),
+                        Positioned(
+                          top: HomeResponsive.w(context, 4),
+                          left: HomeResponsive.w(context, 4),
+                          child: PresenceStatusBadge(
+                            isOnline: creator.isOnline,
+                            compact: true,
                           ),
+                        ),
                       ],
                     ),
                     SizedBox(width: HomeResponsive.w(context, 10)),
@@ -193,11 +195,13 @@ class _ListenerListRowCardState extends State<ListenerListRowCard>
                       children: [
                         _CircleActionButton(
                           icon: Icons.phone_rounded,
+                          enabled: creator.isOnline,
                           onTap: widget.onVoiceCall,
                         ),
                         SizedBox(height: HomeResponsive.w(context, 6)),
                         _CircleActionButton(
                           icon: Icons.videocam_rounded,
+                          enabled: creator.isOnline,
                           onTap: widget.onVideoCall,
                         ),
                       ],
@@ -249,68 +253,38 @@ class _RateLine extends StatelessWidget {
 
 class _CircleActionButton extends StatelessWidget {
   final IconData icon;
+  final bool enabled;
   final VoidCallback onTap;
 
-  const _CircleActionButton({required this.icon, required this.onTap});
+  const _CircleActionButton({
+    required this.icon,
+    required this.onTap,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final s = HomeResponsive.w(context, 34);
+    final child = Container(
+      width: s,
+      height: s,
+      decoration: BoxDecoration(
+        color: enabled ? HomeTheme.primary : const Color(0xFF9CA3AF),
+        shape: BoxShape.circle,
+        boxShadow: enabled ? HomeTheme.softShadow : null,
+      ),
+      child: Icon(
+        icon,
+        color: Colors.white,
+        size: HomeResponsive.w(context, 16),
+      ),
+    );
+
+    if (!enabled) return Opacity(opacity: 0.5, child: child);
     return ScalePressedButton(
       onTap: onTap,
       pressedScale: 0.92,
-      child: Container(
-        width: s,
-        height: s,
-        decoration: BoxDecoration(
-          color: HomeTheme.primary,
-          shape: BoxShape.circle,
-          boxShadow: HomeTheme.softShadow,
-        ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: HomeResponsive.w(context, 16),
-        ),
-      ),
-    );
-  }
-}
-
-class _OnlinePill extends StatelessWidget {
-  final bool compact;
-
-  const _OnlinePill({this.compact = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: HomeResponsive.w(context, compact ? 5 : 8),
-        vertical: HomeResponsive.w(context, compact ? 2 : 4),
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(HomeResponsive.w(context, 10)),
-        boxShadow: HomeTheme.softShadow,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          PulsingOnlineDot(size: HomeResponsive.w(context, compact ? 6 : 8)),
-          if (!compact) ...[
-            SizedBox(width: HomeResponsive.w(context, 4)),
-            Text(
-              'Online',
-              style: GoogleFonts.poppins(
-                fontSize: HomeResponsive.w(context, 10),
-                fontWeight: FontWeight.w600,
-                color: HomeTheme.textPrimary,
-              ),
-            ),
-          ],
-        ],
-      ),
+      child: child,
     );
   }
 }

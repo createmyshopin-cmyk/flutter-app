@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../screens/incoming_call_screen.dart';
-import 'api_config.dart';
+import 'api_client.dart';
 import 'incoming_call_coordinator.dart';
 
 /// Top-level background handler — must be a top-level function, not a method.
@@ -61,13 +61,10 @@ class FCMService {
   static Future<void> _registerToken(
       String fcmToken, String accessToken) async {
     try {
-      final dio = Dio(BaseOptions(baseUrl: apiBaseUrl));
-      await dio.post(
+      await apiDio.post(
         '/api/users/fcm-token',
         data: {'fcmToken': fcmToken},
-        options: Options(
-          headers: {'Authorization': 'Bearer $accessToken'},
-        ),
+        options: authOptions(accessToken),
       );
       debugPrint('FCM token registered: $fcmToken');
     } catch (e) {
@@ -87,23 +84,25 @@ class FCMService {
       return;
     }
 
-    final nav = navigatorKey.currentState;
-    if (nav == null) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      final nav = navigatorKey.currentState;
+      if (nav == null) return;
 
-    IncomingCallCoordinator.markPresenting(callRequestId);
+      IncomingCallCoordinator.markPresenting(callRequestId);
 
-    nav.push(
-      MaterialPageRoute(
-        builder: (_) => IncomingCallScreen(
-          callerName: data['callerName'] ?? 'Unknown',
-          callerAvatar: data['callerAvatar'] ?? '',
-          channelName: data['channelName'] ?? '',
-          callRequestId: callRequestId,
-          agoraToken: data['agoraToken'] ?? '',
-          agoraAppId: data['agoraAppId'] ?? '',
-          isVideo: data['callType'] == 'video',
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => IncomingCallScreen(
+            callerName: data['callerName'] ?? 'Unknown',
+            callerAvatar: data['callerAvatar'] ?? '',
+            channelName: data['channelName'] ?? '',
+            callRequestId: callRequestId,
+            agoraToken: data['agoraToken'] ?? '',
+            agoraAppId: data['agoraAppId'] ?? '',
+            isVideo: data['callType'] == 'video',
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }

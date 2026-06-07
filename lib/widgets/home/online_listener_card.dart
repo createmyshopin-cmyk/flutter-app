@@ -63,11 +63,12 @@ class _OnlineListenerCardState extends State<OnlineListenerCard>
                   size: img,
                   borderRadius: BorderRadius.circular(HomeResponsive.w(context, 12)),
                 ),
-                Positioned(
-                  top: 2,
-                  left: 2,
-                  child: PulsingOnlineDot(size: HomeResponsive.w(context, 9)),
-                ),
+                if (creator.isOnline)
+                  Positioned(
+                    top: 2,
+                    left: 2,
+                    child: PulsingOnlineDot(size: HomeResponsive.w(context, 9)),
+                  ),
               ],
             ),
             SizedBox(height: HomeResponsive.w(context, 6)),
@@ -105,6 +106,7 @@ class _OnlineListenerCardState extends State<OnlineListenerCard>
                   child: _MiniRateButton(
                     icon: Icons.phone_rounded,
                     rate: creator.ratePerMinute,
+                    enabled: creator.isOnline,
                     onTap: widget.onVoiceCall,
                   ),
                 ),
@@ -113,6 +115,7 @@ class _OnlineListenerCardState extends State<OnlineListenerCard>
                   child: _MiniRateButton(
                     icon: Icons.videocam_rounded,
                     rate: creator.videoRatePerMinute,
+                    enabled: creator.isOnline,
                     onTap: widget.onVideoCall,
                   ),
                 ),
@@ -128,41 +131,46 @@ class _OnlineListenerCardState extends State<OnlineListenerCard>
 class _MiniRateButton extends StatelessWidget {
   final IconData icon;
   final int rate;
+  final bool enabled;
   final VoidCallback onTap;
 
   const _MiniRateButton({
     required this.icon,
     required this.rate,
     required this.onTap,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final child = Container(
+      height: HomeResponsive.w(context, 26),
+      decoration: BoxDecoration(
+        color: HomeTheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(HomeResponsive.w(context, 8)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: HomeResponsive.w(context, 11), color: HomeTheme.primary),
+          CoinIcon(size: HomeResponsive.w(context, 9)),
+          Text(
+            '$rate',
+            style: GoogleFonts.poppins(
+              fontSize: HomeResponsive.w(context, 9),
+              fontWeight: FontWeight.w600,
+              color: HomeTheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!enabled) return Opacity(opacity: 0.45, child: child);
     return ScalePressedButton(
       onTap: onTap,
       pressedScale: 0.96,
-      child: Container(
-        height: HomeResponsive.w(context, 26),
-        decoration: BoxDecoration(
-          color: HomeTheme.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(HomeResponsive.w(context, 8)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: HomeResponsive.w(context, 11), color: HomeTheme.primary),
-            CoinIcon(size: HomeResponsive.w(context, 9)),
-            Text(
-              '$rate',
-              style: GoogleFonts.poppins(
-                fontSize: HomeResponsive.w(context, 9),
-                fontWeight: FontWeight.w600,
-                color: HomeTheme.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: child,
     );
   }
 }

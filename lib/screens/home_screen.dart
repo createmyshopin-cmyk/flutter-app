@@ -640,6 +640,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startCall(Creator creator, bool isVideo) {
+    if (!creator.isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Listener Offline'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (!creator.isVoiceAvailable) return;
     final coinProvider = context.read<WalletProvider>();
     if (coinProvider.balance < 50) {

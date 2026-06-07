@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import '../services/api_config.dart';
 import '../models/wallet_transaction.dart';
+import '../services/api_client.dart' show apiDio, authOptions;
 
 class WalletProvider with ChangeNotifier {
   int _balance = 0;
@@ -14,11 +14,7 @@ class WalletProvider with ChangeNotifier {
   List<WalletTransaction> _transactions = [];
   bool _isLoadingTransactions = false;
 
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: apiBaseUrl,
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-  ));
+  final Dio _dio = apiDio;
 
   int get balance => _balance;
   String? get userId => _userId;
@@ -169,6 +165,8 @@ class WalletProvider with ChangeNotifier {
       return true;
     }
     try {
+      final token = _accessToken;
+      if (token == null) return false;
       final response = await _dio.post(
         '/api/wallets/adjust',
         data: {
@@ -176,6 +174,7 @@ class WalletProvider with ChangeNotifier {
           'amount': -amount,
           'reason': 'User coin deduction',
         },
+        options: authOptions(token),
       );
       if (response.statusCode == 200 || response.statusCode == 201) {
         await loadWallet(reason: 'deductCoins');
@@ -195,6 +194,8 @@ class WalletProvider with ChangeNotifier {
       return;
     }
     try {
+      final token = _accessToken;
+      if (token == null) return;
       final response = await _dio.post(
         '/api/wallets/adjust',
         data: {
@@ -202,6 +203,7 @@ class WalletProvider with ChangeNotifier {
           'amount': amount,
           'reason': 'User recharge package',
         },
+        options: authOptions(token),
       );
       if (response.statusCode == 200 || response.statusCode == 201) {
         await loadWallet(reason: 'addCoins');

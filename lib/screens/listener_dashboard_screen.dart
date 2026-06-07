@@ -5,7 +5,12 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/creator_heartbeat_provider.dart';
 import '../providers/call_history_provider.dart';
+import '../providers/network_provider.dart';
+import '../widgets/common/app_shimmer.dart';
 import '../services/call_service.dart';
+import '../services/incoming_call_coordinator.dart';
+import '../services/incoming_call_ringtone.dart';
+import '../core/network/api_exception.dart';
 import '../utils/api_error_message.dart';
 import '../services/payout_service.dart';
 import '../services/creator_stats_service.dart';
@@ -14,7 +19,8 @@ import 'calling_screen.dart';
 import '../widgets/call_history_card.dart';
 
 class ListenerDashboardScreen extends StatefulWidget {
-  const ListenerDashboardScreen({super.key});
+  final bool isTab;
+  const ListenerDashboardScreen({super.key, this.isTab = false});
 
   @override
   State<ListenerDashboardScreen> createState() => _ListenerDashboardScreenState();
@@ -24,7 +30,6 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
   int _activeTab = 0; // 0: Earnings, 1: Payout, 2: History, 3: Reports
   bool _isOnline = false;
   Timer? _pendingPollTimer;
-  final Set<String> _shownRequestIds = {};
   bool _incomingDialogOpen = false;
   final CallService _callService = CallService();
   double _withdrawableBalance = 0.00;
@@ -41,11 +46,26 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
   int _totalTalkMinutes = 0;
   String _pickedRateLabel = '—';
 
+  NetworkProvider? _networkProvider;
+
   @override
   void initState() {
     super.initState();
     _loadPayoutData();
     _loadEarningsStats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _networkProvider = context.read<NetworkProvider>();
+      _networkProvider!.registerRecoveryCallback(_onNetworkRecovery);
+    });
+  }
+
+  Future<void> _onNetworkRecovery() async {
+    if (!mounted) return;
+    if (_isOnline) {
+      await _pollPendingRequests();
+    }
+    await _loadPayoutData();
   }
 
   Future<void> _loadEarningsStats() async {
@@ -116,9 +136,10 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final ex = ApiException.from(e);
         setState(() {
           _loadingPayouts = false;
-          _payoutError = 'Failed to load payout data: $e';
+          _payoutError = ex.isNoInternet ? null : ex.message;
         });
       }
     }
@@ -132,6 +153,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
 
   @override
   void dispose() {
+    _networkProvider?.unregisterRecoveryCallback(_onNetworkRecovery);
     _pendingPollTimer?.cancel();
     super.dispose();
   }
@@ -155,7 +177,6 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
         (_) => _pollPendingRequests(),
       );
     } else {
-      _shownRequestIds.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You are offline. Calls will not be received.'),
@@ -175,8 +196,8 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     try {
       final pending = await _callService.getPendingRequests(accessToken: token);
       for (final request in pending) {
-        if (_shownRequestIds.contains(request.id)) continue;
-        _shownRequestIds.add(request.id);
+        if (!IncomingCallCoordinator.shouldPresent(request.id)) continue;
+        IncomingCallCoordinator.markPresenting(request.id);
         if (mounted) {
           await _showIncomingCall(request);
         }
@@ -191,6 +212,8 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     if (!mounted) return;
     _incomingDialogOpen = true;
 
+    await IncomingCallRingtone.start();
+    try {
     await showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -203,6 +226,8 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
           avatar: request.callerAvatar,
           isVideo: request.isVideo,
           onDecline: () async {
+            await IncomingCallRingtone.stop();
+            IncomingCallCoordinator.markHandled(request.id);
             final token = context.read<AuthProvider>().accessToken;
             if (token != null) {
               try {
@@ -226,6 +251,8 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                 accessToken: token,
                 callRequestId: request.id,
               );
+              IncomingCallCoordinator.markHandled(request.id);
+              await IncomingCallRingtone.stop();
               if (dialogContext.mounted) Navigator.pop(dialogContext);
               if (!mounted) return;
               await Navigator.push(
@@ -244,6 +271,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                 ),
               );
             } catch (e) {
+              IncomingCallCoordinator.clearPresenting();
               if (dialogContext.mounted) Navigator.pop(dialogContext);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -259,7 +287,11 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
         );
       },
     );
+    } finally {
+      await IncomingCallRingtone.stop();
+    }
 
+    IncomingCallCoordinator.clearPresenting();
     _incomingDialogOpen = false;
   }
 
@@ -301,11 +333,13 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
           Expanded(
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const SizedBox(width: 4),
+                if (!widget.isTab) ...[
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,10 +688,9 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
   // --- TAB 2: PAYOUT WITHDRAW TAB ---
   Widget _buildPayoutTab() {
     if (_loadingPayouts && _walletBalance == null) {
-      return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFBA9EFF)),
-        ),
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: ListSkeletonLoader(itemCount: 5, itemHeight: 88),
       );
     }
 
@@ -990,10 +1023,9 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     }
 
     if (historyProvider.isLoading && historyProvider.items.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8A2BE2)),
-        ),
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: ListSkeletonLoader(itemCount: 6, itemHeight: 72),
       );
     }
 
@@ -1021,7 +1053,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
           return CallHistoryCard(
             call: call,
             currentUserId: userId,
-            isCreatorView: true,
+            isListenerView: true,
             onTap: () {
               Navigator.push(
                 context,
@@ -1030,7 +1062,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                     call: call,
                     currentUserId: userId,
                     avatarUrl: avatar,
-                    isCreatorView: true,
+                    isListenerView: true,
                   ),
                 ),
               );

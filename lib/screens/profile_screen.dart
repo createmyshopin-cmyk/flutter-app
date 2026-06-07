@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../providers/wallet_provider.dart';
 import '../providers/call_history_provider.dart';
 import '../utils/home_responsive.dart';
+import '../widgets/common/app_shimmer.dart';
 import 'recharge_screen.dart' hide ScalePressedButton;
 import 'listener_application_screen.dart';
 import 'listener_dashboard_screen.dart' hide ScalePressedButton;
@@ -1374,7 +1375,7 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                   const SizedBox(height: 16),
                   Expanded(
                     child: walletWatch.isLoadingTransactions
-                        ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(HomeTheme.primary)))
+                        ? const ListSkeletonLoader(itemCount: 8, itemHeight: 64)
                         : walletWatch.transactions.isEmpty
                             ? Center(
                                 child: Text(

@@ -23,6 +23,9 @@ dependencies:
   razorpay_flutter: ^1.4.5
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
+  connectivity_plus: ^7.1.1
+  internet_connection_checker_plus: ^3.0.1
+  supabase_flutter: ^2.9.1
 
 dev_dependencies:
   flutter_test:

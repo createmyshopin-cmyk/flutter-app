@@ -9,6 +9,8 @@ import '../providers/call_history_provider.dart';
 import '../models/call_history_item.dart';
 import '../models/wallet_transaction.dart';
 import '../services/api_client.dart';
+import '../widgets/common/app_shimmer.dart';
+import '../widgets/wallet/wallet_lazy_sections.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 /// Matches backend `coin_packages.id` (UUID). Display fields (coins, price, name) are never sent to create-order.
@@ -72,20 +74,37 @@ class CoinRechargeScreen extends StatefulWidget {
 class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
   List<CoinPackage> _packages = [];
   bool _isLoading = false;
-  bool _showAllTransactions = false;
   final ScrollController _scrollController = ScrollController();
+  final WalletLazySections _walletLazy = WalletLazySections();
 
   @override
   void initState() {
     super.initState();
+    _walletLazy.addListener(_onWalletLazyChanged);
+    _scrollController.addListener(_onWalletScroll);
     _fetchPackages();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<WalletProvider>().fetchTransactions();
     });
   }
 
+  void _onWalletLazyChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onWalletScroll() {
+    if (!_scrollController.hasClients) return;
+    final metrics = _scrollController.position;
+    if (metrics.pixels < metrics.maxScrollExtent - 180) return;
+    final total = context.read<WalletProvider>().transactions.length;
+    _walletLazy.loadMoreTransactions(total);
+  }
+
   @override
   void dispose() {
+    _walletLazy.removeListener(_onWalletLazyChanged);
+    _walletLazy.dispose();
+    _scrollController.removeListener(_onWalletScroll);
     _scrollController.dispose();
     super.dispose();
   }
@@ -104,8 +123,10 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
         }
         return;
       }
-      final dio = createApiDio(accessToken: token);
-      final response = await dio.get('/api/payments/packages');
+      final response = await apiDio.get(
+        '/api/payments/packages',
+        options: authOptions(token),
+      );
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
         if (mounted) {
@@ -231,10 +252,16 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
       });
     }
 
-    // Limit transactions to 5 unless toggled
-    final displayTransactions = _showAllTransactions
-        ? coinProvider.transactions
-        : coinProvider.transactions.take(5).toList();
+    _walletLazy.syncTotals(
+      transactionTotal: coinProvider.transactions.length,
+      packageTotal: _packages.length,
+    );
+    final transactionCount = _walletLazy.transactionVisible
+        .clamp(0, coinProvider.transactions.length);
+    final packageCount =
+        _walletLazy.packageVisible.clamp(0, _packages.length);
+    final allTransactionsVisible =
+        transactionCount >= coinProvider.transactions.length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9FB),
@@ -312,9 +339,9 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
                     const SizedBox(width: 8),
                     InkWell(
                       onTap: () {
-                        setState(() {
-                          _showAllTransactions = true;
-                        });
+                        _walletLazy.showAllTransactions(
+                          context.read<WalletProvider>().transactions.length,
+                        );
                         _scrollToTransactions();
                       },
                       child: Padding(
@@ -346,6 +373,7 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
       body: RefreshIndicator(
         color: const Color(0xFFFF1493),
         onRefresh: () async {
+          _walletLazy.reset();
           await Future.wait([
             _fetchPackages(),
             coinProvider.fetchTransactions(),
@@ -353,15 +381,18 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
               coinProvider.loadWallet(reason: 'rechargePullRefresh', accessToken: authProvider.accessToken),
           ]);
         },
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           controller: _scrollController,
+          cacheExtent: 480,
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          slivers: [
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               // 1. Available Balance Card (Pink/Reddish Gradient)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -677,32 +708,44 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
               ),
               const SizedBox(height: 12),
               _isLoading && _packages.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 30.0),
-                          child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF1493)),
-                          ),
-                        ),
-                      ),
+                  ? const HorizontalCardsSkeleton(
+                      cardWidth: 140,
+                      cardHeight: 180,
                     )
                   : SizedBox(
                       height: 195,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _packages.length,
-                        separatorBuilder: (context, index) => const SizedBox(width: 12),
-                        itemBuilder: (context, index) {
-                          final package = _packages[index];
-                          return SizedBox(
-                            width: 125,
-                            child: _buildPackageCardRedesignedHorizontal(package),
-                          );
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification is! ScrollUpdateNotification &&
+                              notification is! ScrollEndNotification) {
+                            return false;
+                          }
+                          final metrics = notification.metrics;
+                          if (metrics.pixels >= metrics.maxScrollExtent - 80) {
+                            _walletLazy.loadMorePackages(_packages.length);
+                          }
+                          return false;
                         },
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          cacheExtent: 320,
+                          itemCount: packageCount,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(width: 12),
+                          itemBuilder: (context, index) {
+                            final package = _packages[index];
+                            return RepaintBoundary(
+                              child: SizedBox(
+                                width: 125,
+                                child: _buildPackageCardRedesignedHorizontal(
+                                  package,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
               const SizedBox(height: 16),
@@ -741,81 +784,105 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
                 ),
               ),
               const SizedBox(height: 28),
-
-              // 4. Transaction History Header & List
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Transaction History',
+            ],
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Transaction History',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: const Color(0xFF222222),
+                  ),
+                ),
+                if (coinProvider.transactions.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      if (allTransactionsVisible) {
+                        _walletLazy.reset();
+                      } else {
+                        _walletLazy.showAllTransactions(
+                          coinProvider.transactions.length,
+                        );
+                      }
+                    },
+                    child: Text(
+                      allTransactionsVisible ? 'Show Less' : 'View All',
                       style: GoogleFonts.poppins(
+                        color: const Color(0xFFFF1493),
                         fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: const Color(0xFF222222),
+                        fontSize: 12,
                       ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _showAllTransactions = !_showAllTransactions;
-                        });
-                      },
-                      child: Text(
-                        _showAllTransactions ? 'Show Less' : 'View All',
-                        style: GoogleFonts.poppins(
-                          color: const Color(0xFFFF1493),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    // Loading State or empty or list
-                    if (coinProvider.isLoadingTransactions && coinProvider.transactions.isEmpty)
-                      _buildHistoryShimmer()
-                    else if (coinProvider.transactions.isEmpty)
-                      _buildHistoryEmptyState()
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: displayTransactions.length,
-                        itemBuilder: (context, index) {
-                          final tx = displayTransactions[index];
-                          return _buildTransactionItem(tx, historyProvider, currentUserId);
-                        },
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // 5. Promo Banner (Red/Pink Gradient)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF1E6F), Color(0xFFFF0055)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
                     ),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: Row(
-                    children: [
+              ],
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        if (coinProvider.isLoadingTransactions &&
+            coinProvider.transactions.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildHistoryShimmer(),
+            ),
+          )
+        else if (coinProvider.transactions.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildHistoryEmptyState(),
+            ),
+          )
+        else
+          SliverList.builder(
+            itemCount: transactionCount,
+            itemBuilder: (context, index) {
+              if (index == transactionCount - 1 &&
+                  transactionCount < coinProvider.transactions.length) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _walletLazy.loadMoreTransactions(
+                    coinProvider.transactions.length,
+                  );
+                });
+              }
+              final tx = coinProvider.transactions[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: RepaintBoundary(
+                  child: _buildTransactionItem(
+                    tx,
+                    historyProvider,
+                    currentUserId,
+                  ),
+                ),
+              );
+            },
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF1E6F), Color(0xFFFF0055)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
                       // Gift Box Coin overflow illustration
                       Image.asset(
                         'assets/illustrations/gift_box_coins.png',
@@ -885,14 +952,15 @@ class _CoinRechargeScreenState extends State<CoinRechargeScreen> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                ],
               ),
-              // Bottom Nav clearance padding
-              SizedBox(height: widget.isTab ? 16.0 : 30.0),
-            ],
+            ),
           ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: widget.isTab ? 16.0 : 30.0),
+        ),
+      ],
         ),
       ),
     );
@@ -1376,10 +1444,13 @@ class _PaymentFlowSheetState extends State<_PaymentFlowSheet> with SingleTickerP
     final token = auth.accessToken;
     if (token == null) throw Exception('Please sign in to recharge.');
 
-    final dio = createApiDio(accessToken: token);
     debugPrint('Calling /payments/verify');
     debugPrint('Verify request body: $verifyBody');
-    final verifyRes = await dio.post('/api/payments/verify', data: verifyBody);
+    final verifyRes = await apiDio.post(
+      '/api/payments/verify',
+      data: verifyBody,
+      options: authOptions(token),
+    );
     debugPrint('Verify Response: ${verifyRes.data}');
 
     int? verifiedBalance;
@@ -1552,14 +1623,13 @@ class _PaymentFlowSheetState extends State<_PaymentFlowSheet> with SingleTickerP
     setState(() => _isProcessing = true);
 
     try {
-      final dio = createApiDio(accessToken: token);
-
       final createOrderPayload = <String, String>{'packageId': packageId};
       debugPrint('CREATE-ORDER PAYLOAD: $createOrderPayload');
 
-      final orderRes = await dio.post(
+      final orderRes = await apiDio.post(
         '/api/payments/create-order',
         data: createOrderPayload,
+        options: authOptions(token),
       );
 
       final orderData = orderRes.data as Map<String, dynamic>;

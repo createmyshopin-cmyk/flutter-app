@@ -6,7 +6,7 @@ import '../../constants/home_theme.dart';
 import '../../models/creator.dart';
 import '../../utils/home_responsive.dart';
 import 'creator_avatar_image.dart';
-import 'pulsing_online_dot.dart';
+import 'presence_status_badge.dart';
 import 'scale_pressed_button.dart';
 
 /// Full-width featured listener card — image left, details right (reference layout).
@@ -112,12 +112,11 @@ class _FeaturedListenerCardState extends State<FeaturedListenerCard>
                             fit: BoxFit.cover,
                             borderRadius: BorderRadius.zero,
                           ),
-                          if (creator.isOnline)
-                            Positioned(
-                              top: HomeResponsive.w(context, 10),
-                              left: HomeResponsive.w(context, 10),
-                              child: _OnlineBadge(),
-                            ),
+                          Positioned(
+                            top: HomeResponsive.w(context, 10),
+                            left: HomeResponsive.w(context, 10),
+                            child: PresenceStatusBadge(isOnline: creator.isOnline),
+                          ),
                         ],
                       ),
                     ),
@@ -214,8 +213,8 @@ class _FeaturedListenerCardState extends State<FeaturedListenerCard>
                                   child: _OutlinedRateButton(
                                     icon: Icons.phone_rounded,
                                     rate: creator.ratePerMinute,
-                                    label: 'Voice Call',
-                                    enabled: creator.isVoiceAvailable,
+                                    label: creator.isOnline ? 'Voice Call' : 'Listener Offline',
+                                    enabled: creator.isOnline && creator.isVoiceAvailable,
                                     onTap: widget.onVoiceCall,
                                   ),
                                 ),
@@ -224,8 +223,8 @@ class _FeaturedListenerCardState extends State<FeaturedListenerCard>
                                   child: _OutlinedRateButton(
                                     icon: Icons.videocam_rounded,
                                     rate: creator.videoRatePerMinute,
-                                    label: 'Video Call',
-                                    enabled: creator.isVoiceAvailable,
+                                    label: creator.isOnline ? 'Video Call' : 'Listener Offline',
+                                    enabled: creator.isOnline && creator.isVoiceAvailable,
                                     onTap: widget.onVideoCall,
                                   ),
                                 ),
@@ -257,38 +256,6 @@ class _FeaturedListenerCardState extends State<FeaturedListenerCard>
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _OnlineBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: HomeResponsive.w(context, 8),
-        vertical: HomeResponsive.w(context, 4),
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(HomeResponsive.w(context, 12)),
-        boxShadow: HomeTheme.softShadow,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          PulsingOnlineDot(size: HomeResponsive.w(context, 8)),
-          SizedBox(width: HomeResponsive.w(context, 4)),
-          Text(
-            'Online',
-            style: GoogleFonts.poppins(
-              fontSize: HomeResponsive.w(context, 11),
-              fontWeight: FontWeight.w600,
-              color: HomeTheme.textPrimary,
-            ),
-          ),
-        ],
       ),
     );
   }

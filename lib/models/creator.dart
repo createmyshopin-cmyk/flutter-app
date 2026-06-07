@@ -54,6 +54,56 @@ class Creator {
     return parts.isNotEmpty ? parts.first : name;
   }
 
+  Creator copyWith({
+    String? id,
+    String? name,
+    String? avatar,
+    bool? isOnline,
+    String? lastSeenAt,
+    String? lastSeenLabel,
+    bool? isNew,
+    bool? isVoiceAvailable,
+    bool? isChatAvailable,
+    String? voicePrice,
+    String? chatPrice,
+    String? language,
+    List<String>? languages,
+    String? gender,
+    int? ratePerMinute,
+    double? rating,
+    int? totalCalls,
+    double? responseRate,
+    String? createdAt,
+  }) {
+    return Creator(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      avatar: avatar ?? this.avatar,
+      isOnline: isOnline ?? this.isOnline,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      lastSeenLabel: lastSeenLabel ?? this.lastSeenLabel,
+      isNew: isNew ?? this.isNew,
+      isVoiceAvailable: isVoiceAvailable ?? this.isVoiceAvailable,
+      isChatAvailable: isChatAvailable ?? this.isChatAvailable,
+      voicePrice: voicePrice ?? this.voicePrice,
+      chatPrice: chatPrice ?? this.chatPrice,
+      language: language ?? this.language,
+      languages: languages ?? this.languages,
+      gender: gender ?? this.gender,
+      ratePerMinute: ratePerMinute ?? this.ratePerMinute,
+      rating: rating ?? this.rating,
+      totalCalls: totalCalls ?? this.totalCalls,
+      responseRate: responseRate ?? this.responseRate,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  static String presenceLabel({required bool isOnline, String? lastSeenAt}) {
+    if (isOnline) return 'Online';
+    if (lastSeenAt == null || lastSeenAt.isEmpty) return 'Offline';
+    return 'Offline';
+  }
+
   static List<String> _parseLanguages(Map<String, dynamic> json) {
     final raw = json['languages'];
     if (raw is List) {
